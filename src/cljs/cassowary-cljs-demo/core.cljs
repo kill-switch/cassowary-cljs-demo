@@ -6,42 +6,89 @@
                                constrain! stay! value
                                + - =]]))
 
-(let [height 200, width 800, max-radius 40
-      solver  (simplex-solver)
-      spacing (cvar) ;;The spacing between circles (to be solved for)
-      circles (repeatedly 10 #(hash-map :r  (cvar (* max-radius (rand)))
-                                        :cx (cvar 0)
-                                        :cy (cvar (/ height 2))))]
 
-                 ;;The circle radii and vertical positions are constants
-                 (doseq [c circles]
-                   (stay! solver (:r c))
-                   (stay! solver (:cy c)))
+;; mult cannot be used as cassowary mult in constraints is bnot imported 
+
+(def cnstrnt "100-3_x-100-2_x-200-1_x-300") 
+
+
+
+( defn mymult  [x y] (if (= y 0)
+							0
+							(+ x (mymult x (- y 1)))))
+
+(defn evenelelst ([] ()) ([x] ()) ([x y & more] (concat (list y) (apply evenelelst more))))
+				
+
+(defn oddelelst ([] ())
+				([x] (list x))
+				([x y & more] (concat (list x) (apply oddelelst more))))
+				
+
+
+(def strlist (.split cnstrnt "-"))
+
+(defn remlst ([] ())
+			([x] ())
+			([x & more] (concat (list x) (apply remlst more))))
+ 
+
+(def fullspclst (map #(js/parseInt %) (apply oddelelst (.split cnstrnt "-"))))
+
+(def spclst (apply remlst (rest fullspclst)))
+
+(def circlst  (map  #(js/parseInt % )(map first ( map #(.split % "_") (apply evenelelst strlist)))))
+
+
+(let [ height 200, width 800,
+	
+	solver  (simplex-solver),
+	
+		spaces (map #(hash-map :s (cvar %)) spclst),
+			
+		noofcirc  (count spaces) ,
+		
+		radius (cvar 40),
+		
+      ;;circles (repeatedly (+ noofcirc 1) #(hash-map :r  radius
+        ;;                       :cx  (cvar (/ width 2))
+          ;;                              :cy (cvar (/ height 2))))
+           
+           circles (map #(hash-map
+           						:mulfac % 
+           						:r  radius 
+           						:cx (cvar (/ width 2))
+           						:cy (cvar (/ height 2)))  circlst),
+           
+                                       
+     	seq4ans (partition 2 2 (interleave (partition 2 1 circles)  spaces))]
+                                 
+                 (doseq [c circles]                       
+                (stay! solver (:cy c)))
+					
+					(doseq [s spaces]
+					(stay! solver (:s s)))
+					
                  
-                 ;;Spacing between first circle and the wall
-                 (constrain! solver (= 0 (- (:cx (first circles))
-                                            (:r (first circles))
-                                            spacing)))
+                 (constrain! solver (= (first fullspclst) (- (:cx (first circles)) (mymult (:r (first circles))  (:mulfac (first circles)) ))))
                  
-                 ;;Spacing between each pair of neighboring circles
-                 (doseq [[left right] (partition 2 1 circles)]
-                   (constrain! solver (= spacing (- (:cx right)
-                                                    (:r right)
-                                                    (+ (:cx left) (:r left))))))
-
-                 ;;Spacing between last circle and the wall
-                 (constrain! solver (= spacing (- width
-                                                  (:cx (last circles))
-                                                  (:r (last circles)))))
-
-                 ;;Draw the circles as SVG
+                 (doseq [[[left right] spc] seq4ans]
+                 	(constrain! solver (= (- (:cx right) (:cx left)) (+ (:s spc) (mymult (:r right) (:mulfac right))  (mymult (:r left) (:mulfac left))))))
+                 	
+                 
+                 	(constrain! solver (= width (+ (:cx (last circles)) (mymult (:r (last circles)) (:mulfac (last circles))) (last fullspclst) )))
+                 
+                 
+                 
+                 
                  (append! "body"
                           [:svg:svg {:width width :height height
                                      :style {:border "1px solid black"
-                                             :margin "20px"}}])
+                                             :margin
+                                              "20px"}}])
 
-                  (doseq [c circles]
+                 	(doseq [c circles]
                     (append! "body svg"
                              [:svg:circle {:cx (value (:cx c))
                                            :cy (value (:cy c))
-                                           :r (value (:r c))}])))
+                                           :r (mymult (value (:r c))  (:mulfac c) )}])))
